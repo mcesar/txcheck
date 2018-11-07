@@ -89,7 +89,6 @@ func TestMain(t *testing.T) {
 			output: "",
 			err: fmt.Sprintf(
 				errMsg,
-				filepath.Join(os.TempDir(), "txcheck_test", "main.go"),
 				"could not load packages: packages contain errors",
 			),
 		},

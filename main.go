@@ -19,7 +19,7 @@ Usage:
 	txcheck package...
 `
 	warningMsg = "function '%s' calls DML method but does not call Begin\n"
-	errMsg     = "error checking '%v': %v\n"
+	errMsg     = "error running checker: %v\n"
 )
 
 var (
@@ -36,13 +36,9 @@ var (
 )
 
 func main() {
-	var warnings []string
-	for _, filename := range os.Args[1:] {
-		w, err := (&checker{}).run(os.Args[1:]...)
-		if err != nil {
-			fmt.Fprintf(errout, errMsg, filename, err)
-		}
-		warnings = append(warnings, w...)
+	warnings, err := (&checker{}).run(os.Args[1:]...)
+	if err != nil {
+		fmt.Fprintf(errout, errMsg, err)
 	}
 	for _, w := range warnings {
 		fmt.Fprint(out, w)
@@ -86,9 +82,9 @@ func (c *checker) loadPackages(args []string) ([]*packages.Package, error) {
 	return pkgs, nil
 }
 
-func (c *checker) computeCallGraph(pkgs []*packages.Package) (cg *callgraph.Graph, err error) {
+func (c *checker) computeCallGraph(initial []*packages.Package) (cg *callgraph.Graph, err error) {
 	// Create and build SSA-form program representation.
-	prog, _ := ssautil.AllPackages(pkgs, 0)
+	prog, _ := ssautil.AllPackages(initial, 0)
 	prog.Build()
 	cg = cha.CallGraph(prog)
 	cg.DeleteSyntheticNodes()
