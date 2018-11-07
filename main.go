@@ -2,18 +2,28 @@ package main
 
 import (
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
+
+	"golang.org/x/tools/go/callgraph"
+	"golang.org/x/tools/go/callgraph/cha"
+	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-const errMsg = "function '%s' calls method %s but does not call Begin"
+const (
+	usage = `txcheck: check if DML statements are inside a transaction.
+
+Usage:
+
+	txcheck package...
+`
+	errMsg = "function '%s' calls DML method but does not call Begin"
+)
 
 func main() {
 	var warnings []string
 	for _, filename := range os.Args[1:] {
-		w, err := checkTx(filename, nil)
+		w, err := checkTx(os.Args[1:]...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error checking '%v': %v\n", filename, err)
 		}
@@ -24,66 +34,57 @@ func main() {
 	}
 }
 
-func checkTx(filename string, src interface{}) ([]string, error) {
-	fs := token.NewFileSet()
-	f, err := parser.ParseFile(fs, filename, src, parser.AllErrors)
-	if err != nil {
-		return nil, fmt.Errorf("could not parse: %v", err)
+func checkTx(args ...string) ([]string, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf(usage)
 	}
-	v := &fileVisitor{}
-	ast.Walk(v, f)
-	var warnings []string
-	for _, fdv := range v.funcDeclVisitors {
-		if (fdv.hasInsertInto || fdv.hasUpdate || fdv.hasDeleteFrom) && !fdv.hasBegin {
-			var method string
-			if fdv.hasInsertInto {
-				method = "InsertInto"
-			} else if fdv.hasUpdate {
-				method = "Update"
-			} else if fdv.hasDeleteFrom {
-				method = "DeleteFrom"
+	cfg := &packages.Config{Mode: packages.LoadAllSyntax}
+	initial, err := packages.Load(cfg, args...)
+	if err != nil {
+		return nil, fmt.Errorf("could not load packages: %v", err)
+	}
+	if packages.PrintErrors(initial) > 0 {
+		return nil, fmt.Errorf("packages contain errors")
+	}
+	// Create and build SSA-form program representation.
+	prog, _ /*pkgs*/ := ssautil.AllPackages(initial, 0)
+	prog.Build()
+	cg := cha.CallGraph(prog)
+	cg.DeleteSyntheticNodes()
+	callersOfDML := make(map[string]bool)
+	callersOfBegin := make(map[string]bool)
+	dml := []string{"InsertInto", "Update", "DeleteFrom"}
+	if err := callgraph.GraphVisitEdges(cg, func(edge *callgraph.Edge) error {
+		pp := edge.Caller.Func.Package().Pkg.Path()
+		if pp == "command-line-arguments" || contains(args, pp) {
+			qualifiedName := fmt.Sprintf("%v.%v", pp, edge.Caller.Func.Name())
+			if edge.Callee.Func.Name() == "Begin" {
+				callersOfBegin[qualifiedName] = true
+			} else if contains(dml, edge.Callee.Func.Name()) {
+				callersOfDML[qualifiedName] = true
 			}
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("could not visit edges: %v", err)
+	}
+	var warnings []string
+	for function := range callersOfDML {
+		if !callersOfBegin[function] {
 			warnings = append(
 				warnings,
-				fmt.Sprintf(errMsg, fdv.funcName, method),
+				fmt.Sprintf(errMsg, function),
 			)
 		}
 	}
 	return warnings, nil
 }
 
-type fileVisitor struct {
-	funcDeclVisitors []*funcDeclVisitor
-}
-
-func (v *fileVisitor) Visit(n ast.Node) ast.Visitor {
-	if node, ok := n.(*ast.FuncDecl); ok {
-		fdv := &funcDeclVisitor{funcName: node.Name.Name}
-		v.funcDeclVisitors = append(v.funcDeclVisitors, fdv)
-		return fdv
-	}
-	return v
-}
-
-type funcDeclVisitor struct {
-	funcName                                          string
-	hasInsertInto, hasUpdate, hasDeleteFrom, hasBegin bool
-}
-
-func (v *funcDeclVisitor) Visit(n ast.Node) ast.Visitor {
-	if node, ok := n.(*ast.CallExpr); ok {
-		if sel, ok := node.Fun.(*ast.SelectorExpr); ok {
-			switch sel.Sel.Name {
-			case "InsertInto":
-				v.hasInsertInto = true
-			case "Update":
-				v.hasUpdate = true
-			case "DeleteFrom":
-				v.hasDeleteFrom = true
-			case "Begin":
-				v.hasBegin = true
-			}
+func contains(ss []string, s string) bool {
+	for _, each := range ss {
+		if each == s {
+			return true
 		}
 	}
-	return v
+	return false
 }

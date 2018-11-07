@@ -2,11 +2,20 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
 
 func TestCheck(t *testing.T) {
+	/*
+		gopath, err := filepath.Abs("testdata")
+		if err != nil {
+			t.Fatal(err)
+		}
+	*/
 	cases := []struct {
 		name   string
 		input  string
@@ -25,7 +34,7 @@ func TestCheck(t *testing.T) {
 					sess.InsertInto("t").Columns("c").Values("v").Exec()
 				}
 			`,
-			output: []string{fmt.Sprintf(errMsg, "main", "InsertInto")},
+			output: []string{fmt.Sprintf(errMsg, "command-line-arguments.main")},
 			err:    nil,
 		},
 		{
@@ -55,7 +64,7 @@ func TestCheck(t *testing.T) {
 					sess.Update("t").Set("name", "n").Exec()
 				}
 			`,
-			output: []string{fmt.Sprintf(errMsg, "main", "Update")},
+			output: []string{fmt.Sprintf(errMsg, "command-line-arguments.main")},
 			err:    nil,
 		},
 		{
@@ -70,7 +79,7 @@ func TestCheck(t *testing.T) {
 					sess.DeleteFrom("t").Exec()
 				}
 			`,
-			output: []string{fmt.Sprintf(errMsg, "main", "DeleteFrom")},
+			output: []string{fmt.Sprintf(errMsg, "command-line-arguments.main")},
 			err:    nil,
 		},
 		{
@@ -83,12 +92,21 @@ func TestCheck(t *testing.T) {
 				}
 			`,
 			output: nil,
-			err: fmt.Errorf("could not parse: 5:40: missing ',' " +
-				"before newline in argument list (and 6 more errors)"),
+			err:    fmt.Errorf("packages contain errors"),
 		},
 	}
 	for _, c := range cases {
-		output, err := checkTx("", c.input)
+		dir := filepath.Join(os.TempDir(), "txcheck_test")
+		err := os.Mkdir(dir, os.ModePerm)
+		if err != nil && !os.IsExist(err) {
+			t.Fatal(err)
+		}
+		file := filepath.Join(dir, "main.go")
+		err = ioutil.WriteFile(file, []byte(c.input), os.ModePerm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		output, err := checkTx(file)
 		if !reflect.DeepEqual(c.output, output) {
 			t.Errorf("Want %v, got %v", c.output, output)
 		}
