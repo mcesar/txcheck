@@ -9,13 +9,7 @@ import (
 	"testing"
 )
 
-func TestCheck(t *testing.T) {
-	/*
-		gopath, err := filepath.Abs("testdata")
-		if err != nil {
-			t.Fatal(err)
-		}
-	*/
+func TestCheckerRun(t *testing.T) {
 	cases := []struct {
 		name   string
 		input  string
@@ -92,26 +86,47 @@ func TestCheck(t *testing.T) {
 				}
 			`,
 			output: nil,
-			err:    fmt.Errorf("packages contain errors"),
+			err:    fmt.Errorf("could not compute call graph: packages contain errors"),
+		},
+		{
+			name: `Calls InsertInto at one function and Begin at the caller,
+				must not return warning`,
+			input: `
+				package main
+				import "github.com/gocraft/dbr"
+				func main() {
+					conn, _ := dbr.Open("sqlite", ":memory:", nil)
+					sess := conn.NewSession(nil)
+					tx, _ := sess.Begin()
+					f1(tx)
+				}
+				func f1(tx *dbr.Tx) {
+					tx.InsertInto("t").Columns("c").Values("v").Exec()
+				}
+			`,
+			output: nil,
+			err:    nil,
 		},
 	}
 	for _, c := range cases {
-		dir := filepath.Join(os.TempDir(), "txcheck_test")
-		err := os.Mkdir(dir, os.ModePerm)
-		if err != nil && !os.IsExist(err) {
-			t.Fatal(err)
-		}
-		file := filepath.Join(dir, "main.go")
-		err = ioutil.WriteFile(file, []byte(c.input), os.ModePerm)
-		if err != nil {
-			t.Fatal(err)
-		}
-		output, err := checkTx(file)
-		if !reflect.DeepEqual(c.output, output) {
-			t.Errorf("Want %v, got %v", c.output, output)
-		}
-		if !reflect.DeepEqual(c.err, err) {
-			t.Errorf("Want %v, got %v", c.err, err)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			dir := filepath.Join(os.TempDir(), "txcheck_test")
+			err := os.Mkdir(dir, os.ModePerm)
+			if err != nil && !os.IsExist(err) {
+				t.Fatal(err)
+			}
+			file := filepath.Join(dir, "main.go")
+			err = ioutil.WriteFile(file, []byte(c.input), os.ModePerm)
+			if err != nil {
+				t.Fatal(err)
+			}
+			output, err := (&checker{}).run(file)
+			if !reflect.DeepEqual(c.output, output) {
+				t.Errorf("Want %v, got %v", c.output, output)
+			}
+			if !reflect.DeepEqual(c.err, err) {
+				t.Errorf("Want %v, got %v", c.err, err)
+			}
+		})
 	}
 }
