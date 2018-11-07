@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -13,8 +14,8 @@ func TestCheckerRun(t *testing.T) {
 	cases := []struct {
 		name   string
 		input  string
-		output []string
-		err    error
+		output string
+		err    string
 	}{
 		{
 			name: `Calls InsertInto method but does not call Begin,
@@ -28,8 +29,8 @@ func TestCheckerRun(t *testing.T) {
 					sess.InsertInto("t").Columns("c").Values("v").Exec()
 				}
 			`,
-			output: []string{fmt.Sprintf(errMsg, "command-line-arguments.main")},
-			err:    nil,
+			output: fmt.Sprintf(warningMsg, "command-line-arguments.main"),
+			err:    "",
 		},
 		{
 			name: `Calls InsertInto and Begin methods, must not return warning`,
@@ -43,8 +44,8 @@ func TestCheckerRun(t *testing.T) {
 					tx.InsertInto("t").Columns("c").Values("v").Exec()
 				}
 			`,
-			output: nil,
-			err:    nil,
+			output: "",
+			err:    "",
 		},
 		{
 			name: `Calls Update method but does not call Begin,
@@ -58,8 +59,8 @@ func TestCheckerRun(t *testing.T) {
 					sess.Update("t").Set("name", "n").Exec()
 				}
 			`,
-			output: []string{fmt.Sprintf(errMsg, "command-line-arguments.main")},
-			err:    nil,
+			output: fmt.Sprintf(warningMsg, "command-line-arguments.main"),
+			err:    "",
 		},
 		{
 			name: `Calls DeleteFrom method but does not call Begin,
@@ -73,8 +74,8 @@ func TestCheckerRun(t *testing.T) {
 					sess.DeleteFrom("t").Exec()
 				}
 			`,
-			output: []string{fmt.Sprintf(errMsg, "command-line-arguments.main")},
-			err:    nil,
+			output: fmt.Sprintf(warningMsg, "command-line-arguments.main"),
+			err:    "",
 		},
 		{
 			name: `Parse error, must return error`,
@@ -85,8 +86,12 @@ func TestCheckerRun(t *testing.T) {
 					dbr.Open("sqlite", ":memory:", nil
 				}
 			`,
-			output: nil,
-			err:    fmt.Errorf("could not compute call graph: packages contain errors"),
+			output: "",
+			err: fmt.Sprintf(
+				errMsg,
+				filepath.Join(os.TempDir(), "txcheck_test", "main.go"),
+				"could not compute call graph: packages contain errors",
+			),
 		},
 		{
 			name: `Calls InsertInto at one function and Begin at the caller,
@@ -104,12 +109,65 @@ func TestCheckerRun(t *testing.T) {
 					tx.InsertInto("t").Columns("c").Values("v").Exec()
 				}
 			`,
-			output: nil,
-			err:    nil,
+			output: "",
+			err:    "",
+		},
+		{
+			name: `Calls Exec method but does not call Begin,
+				must return warning`,
+			input: `
+				package main
+				import "database/sql"
+				var db *sql.DB
+				func main() {
+					db.Exec("INSERT INTO t(c) values('v');")
+				}
+			`,
+			output: fmt.Sprintf(warningMsg, "command-line-arguments.main"),
+			err:    "",
+		},
+		{
+			name: `Calls ExecContext method but does not call Begin,
+				must return warning`,
+			input: `
+				package main
+				import (
+					"context"
+					"database/sql"
+				)
+				var db *sql.DB
+				func main() {
+					db.ExecContext(
+						context.Background(),
+						"INSERT INTO t(c) values('v');",
+					)
+				}
+			`,
+			output: fmt.Sprintf(warningMsg, "command-line-arguments.main"),
+			err:    "",
+		},
+		{
+			name: `Calls Exec method and BeginTx, must not return warning`,
+			input: `
+				package main
+				import (
+					"context"
+					"database/sql"
+				)
+				var db *sql.DB
+				func main() {
+					tx, _ := db.BeginTx(context.Background(), nil)
+					tx.Exec("INSERT INTO t(c) values('v');")
+				}
+			`,
+			output: "",
+			err:    "",
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			oldArgs := os.Args
+			defer func() { os.Args = oldArgs }()
 			dir := filepath.Join(os.TempDir(), "txcheck_test")
 			err := os.Mkdir(dir, os.ModePerm)
 			if err != nil && !os.IsExist(err) {
@@ -120,12 +178,17 @@ func TestCheckerRun(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			output, err := (&checker{}).run(file)
-			if !reflect.DeepEqual(c.output, output) {
-				t.Errorf("Want %v, got %v", c.output, output)
+			os.Args = []string{"cmd", file}
+			buf := new(bytes.Buffer)
+			errbuf := new(bytes.Buffer)
+			out = buf
+			errout = errbuf
+			main()
+			if !reflect.DeepEqual(c.output, buf.String()) {
+				t.Errorf("Want %v, got %v", c.output, buf.String())
 			}
-			if !reflect.DeepEqual(c.err, err) {
-				t.Errorf("Want %v, got %v", c.err, err)
+			if !reflect.DeepEqual(c.err, errbuf.String()) {
+				t.Errorf("Want %v, got %v", c.err, errbuf.String())
 			}
 		})
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"golang.org/x/tools/go/callgraph"
@@ -17,7 +18,21 @@ Usage:
 
 	txcheck package...
 `
-	errMsg = "function '%s' calls DML method but does not call Begin"
+	warningMsg = "function '%s' calls DML method but does not call Begin\n"
+	errMsg     = "error checking '%v': %v\n"
+)
+
+var (
+	out    io.Writer = os.Stdout
+	errout io.Writer = os.Stderr
+	begin            = []string{"Begin", "BeginTx"}
+	dml              = []string{
+		"InsertInto",
+		"Update",
+		"DeleteFrom",
+		"Exec",
+		"ExecContext",
+	}
 )
 
 func main() {
@@ -25,16 +40,14 @@ func main() {
 	for _, filename := range os.Args[1:] {
 		w, err := (&checker{}).run(os.Args[1:]...)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error checking '%v': %v\n", filename, err)
+			fmt.Fprintf(errout, errMsg, filename, err)
 		}
 		warnings = append(warnings, w...)
 	}
 	for _, w := range warnings {
-		fmt.Println(w)
+		fmt.Fprint(out, w)
 	}
 }
-
-var dml = []string{"InsertInto", "Update", "DeleteFrom"}
 
 type checker struct {
 	callersOfDML   map[string]bool
@@ -84,11 +97,11 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, args []string) error {
 	c.callersOfDML = make(map[string]bool)
 	c.callersOfBegin = make(map[string]bool)
 	c.callers = make(map[string][]string)
-	if err := callgraph.GraphVisitEdges(cg, func(edge *callgraph.Edge) error {
+	err := callgraph.GraphVisitEdges(cg, func(edge *callgraph.Edge) error {
 		callerpp := edge.Caller.Func.Package().Pkg.Path()
 		callerqn := qualifiedName(callerpp, edge.Caller.Func.Name())
 		if ownpackage(callerpp) {
-			if edge.Callee.Func.Name() == "Begin" {
+			if contains(begin, edge.Callee.Func.Name()) {
 				c.callersOfBegin[callerqn] = true
 			} else if contains(dml, edge.Callee.Func.Name()) {
 				c.callersOfDML[callerqn] = true
@@ -100,7 +113,8 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, args []string) error {
 			c.callers[calleeqn] = append(c.callers[calleeqn], callerqn)
 		}
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("could not visit edges: %v", err)
 	}
 	return nil
@@ -109,14 +123,14 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, args []string) error {
 func (c *checker) warnings() []string {
 	var warnings []string
 	for function := range c.callersOfDML {
-		if !c.beginCalled(function) {
-			warnings = append(warnings, fmt.Sprintf(errMsg, function))
+		if !c.isBeginCalledBy(function) {
+			warnings = append(warnings, fmt.Sprintf(warningMsg, function))
 		}
 	}
 	return warnings
 }
 
-func (c *checker) beginCalled(f string) bool {
+func (c *checker) isBeginCalledBy(f string) bool {
 	if c.callersOfBegin[f] {
 		return true
 	}
@@ -124,7 +138,7 @@ func (c *checker) beginCalled(f string) bool {
 		return false
 	}
 	for _, caller := range c.callers[f] {
-		if !c.beginCalled(caller) {
+		if !c.isBeginCalledBy(caller) {
 			return false
 		}
 	}
