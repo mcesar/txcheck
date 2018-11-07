@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestCheckerRun(t *testing.T) {
+func TestMain(t *testing.T) {
 	cases := []struct {
 		name   string
 		input  string
@@ -90,7 +90,7 @@ func TestCheckerRun(t *testing.T) {
 			err: fmt.Sprintf(
 				errMsg,
 				filepath.Join(os.TempDir(), "txcheck_test", "main.go"),
-				"could not compute call graph: packages contain errors",
+				"could not load packages: packages contain errors",
 			),
 		},
 		{

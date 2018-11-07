@@ -59,40 +59,52 @@ func (c *checker) run(args ...string) ([]string, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf(usage)
 	}
-	cg, err := c.computeCallGraph(args)
+	pkgs, err := c.loadPackages(args)
+	if err != nil {
+		return nil, fmt.Errorf("could not load packages: %v", err)
+	}
+	cg, err := c.computeCallGraph(pkgs)
 	if err != nil {
 		return nil, fmt.Errorf("could not compute call graph: %v", err)
 	}
-	err = c.analyzeGraph(cg, args)
+	err = c.analyzeGraph(cg, pkgs)
 	if err != nil {
 		return nil, fmt.Errorf("could not analyze call graph: %v", err)
 	}
 	return c.warnings(), nil
 }
 
-func (c *checker) computeCallGraph(args []string) (*callgraph.Graph, error) {
+func (c *checker) loadPackages(args []string) ([]*packages.Package, error) {
 	cfg := &packages.Config{Mode: packages.LoadAllSyntax}
-	initial, err := packages.Load(cfg, args...)
+	pkgs, err := packages.Load(cfg, args...)
 	if err != nil {
-		return nil, fmt.Errorf("could not load packages: %v", err)
+		return nil, err
 	}
-	if packages.PrintErrors(initial) > 0 {
+	if packages.PrintErrors(pkgs) > 0 {
 		return nil, fmt.Errorf("packages contain errors")
 	}
+	return pkgs, nil
+}
+
+func (c *checker) computeCallGraph(pkgs []*packages.Package) (cg *callgraph.Graph, err error) {
 	// Create and build SSA-form program representation.
-	prog, _ /*pkgs*/ := ssautil.AllPackages(initial, 0)
+	prog, _ := ssautil.AllPackages(pkgs, 0)
 	prog.Build()
-	cg := cha.CallGraph(prog)
+	cg = cha.CallGraph(prog)
 	cg.DeleteSyntheticNodes()
 	return cg, nil
 }
 
-func (c *checker) analyzeGraph(cg *callgraph.Graph, args []string) error {
+func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) error {
+	var pkgsPaths []string
+	for _, pkg := range pkgs {
+		pkgsPaths = append(pkgsPaths, pkg.PkgPath)
+	}
 	qualifiedName := func(p, f string) string {
 		return fmt.Sprintf("%v.%v", p, f)
 	}
 	ownpackage := func(p string) bool {
-		return p == "command-line-arguments" || contains(args, p)
+		return p == "command-line-arguments" || contains(pkgsPaths, p)
 	}
 	c.callersOfDML = make(map[string]bool)
 	c.callersOfBegin = make(map[string]bool)
