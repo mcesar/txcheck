@@ -96,15 +96,15 @@ func (c *checker) computeCallGraph(pkgs []*packages.Package) (cg *callgraph.Grap
 }
 
 func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) error {
-	var pkgsPaths []string
+	var initialPackages []string
 	for _, pkg := range pkgs {
-		pkgsPaths = append(pkgsPaths, pkg.PkgPath)
+		initialPackages = append(initialPackages, pkg.PkgPath)
 	}
 	qualifiedName := func(p, f string) string {
 		return fmt.Sprintf("%v.%v", p, f)
 	}
-	ownpackage := func(p string) bool {
-		return p == "command-line-arguments" || contains(pkgsPaths, p)
+	isInitialPackage := func(p string) bool {
+		return p == "command-line-arguments" || contains(initialPackages, p)
 	}
 	c.callersOfDML = make(map[string]bool)
 	c.callersOfBegin = make(map[string]bool)
@@ -112,7 +112,7 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) er
 	err := callgraph.GraphVisitEdges(cg, func(edge *callgraph.Edge) error {
 		callerpp := edge.Caller.Func.Package().Pkg.Path()
 		callerqn := qualifiedName(callerpp, edge.Caller.Func.Name())
-		if ownpackage(callerpp) {
+		if isInitialPackage(callerpp) {
 			if contains(begin, edge.Callee.Func.Name()) {
 				c.callersOfBegin[callerqn] = true
 			} else if contains(dml, edge.Callee.Func.Name()) {
@@ -120,7 +120,7 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) er
 			}
 		}
 		calleepp := edge.Callee.Func.Package().Pkg.Path()
-		if ownpackage(calleepp) {
+		if isInitialPackage(calleepp) {
 			calleeqn := qualifiedName(calleepp, edge.Callee.Func.Name())
 			c.callers[calleeqn] = append(c.callers[calleeqn], callerqn)
 		}
