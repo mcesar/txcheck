@@ -100,7 +100,9 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) er
 		return fmt.Sprintf("%v.%v", p, f)
 	}
 	isInitialPackage := func(p string) bool {
-		return p == "command-line-arguments" || contains(initialPackages, p)
+		return p == "command-line-arguments" ||
+			p == "github.com/mcesar/dbrx" ||
+			contains(initialPackages, p)
 	}
 	c.callersOfDML = make(map[string]bool)
 	c.callersOfBegin = make(map[string]bool)

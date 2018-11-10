@@ -162,6 +162,26 @@ func TestMain(t *testing.T) {
 			output: "",
 			err:    "",
 		},
+		{
+			name: `Calls InsertInto at one function and RunInsideTransaction
+				at the caller, must not return warning`,
+			input: `
+				package main
+				import "github.com/gocraft/dbr"
+				import "github.com/mcesar/dbrx"
+				func main() {
+					conn, _ := dbr.Open("sqlite", ":memory:", nil)
+					sess := conn.NewSession(nil)
+					dbrx.RunInTransaction(dbrx.Wrap(sess), f1)
+				}
+				func f1(tx dbrx.TX) error {
+					tx.InsertInto("t").Columns("c").Values("v").Exec()
+					return nil
+				}
+			`,
+			output: "",
+			err:    "",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
