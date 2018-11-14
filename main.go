@@ -120,7 +120,9 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) er
 		calleepp := edge.Callee.Func.Package().Pkg.Path()
 		if isInitialPackage(calleepp) {
 			calleeqn := qualifiedName(calleepp, edge.Callee.Func.Name())
-			c.callers[calleeqn] = append(c.callers[calleeqn], callerqn)
+			if callerqn != calleeqn {
+				c.callers[calleeqn] = append(c.callers[calleeqn], callerqn)
+			}
 		}
 		return nil
 	})

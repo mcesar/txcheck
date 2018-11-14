@@ -182,6 +182,23 @@ func TestMain(t *testing.T) {
 			output: "",
 			err:    "",
 		},
+		{
+			name: `Recursive calls`,
+			input: `
+				package p
+				import "github.com/mcesar/dbrx"
+				type S struct {dml dbrx.DML}
+				func (s S) F() error {
+					return S{s.dml}.f()
+				}
+				func (s S) f() error {
+					s.dml.InsertInto("t").Columns("c").Values("v").Exec()
+					return s.f()
+				}
+			`,
+			output: fmt.Sprintf(warningMsg, "command-line-arguments.f"),
+			err:    "",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
