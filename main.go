@@ -120,9 +120,7 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) er
 		calleepp := edge.Callee.Func.Package().Pkg.Path()
 		if isInitialPackage(calleepp) {
 			calleeqn := qualifiedName(calleepp, edge.Callee.Func.Name())
-			if callerqn != calleeqn {
-				c.callers[calleeqn] = append(c.callers[calleeqn], callerqn)
-			}
+			c.callers[calleeqn] = append(c.callers[calleeqn], callerqn)
 		}
 		return nil
 	})
@@ -135,14 +133,15 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) er
 func (c *checker) warnings() []string {
 	var warnings []string
 	for function := range c.callersOfDML {
-		if !c.isBeginCalledBy(function) {
+		if !c.isBeginCalledBy(function, map[string]bool{}) {
 			warnings = append(warnings, fmt.Sprintf(warningMsg, function))
 		}
 	}
 	return warnings
 }
 
-func (c *checker) isBeginCalledBy(f string) bool {
+func (c *checker) isBeginCalledBy(f string, visited map[string]bool) bool {
+	visited[f] = true
 	if c.callersOfBegin[f] {
 		return true
 	}
@@ -150,7 +149,7 @@ func (c *checker) isBeginCalledBy(f string) bool {
 		return false
 	}
 	for _, caller := range c.callers[f] {
-		if !c.isBeginCalledBy(caller) {
+		if !visited[caller] && !c.isBeginCalledBy(caller, visited) {
 			return false
 		}
 	}
