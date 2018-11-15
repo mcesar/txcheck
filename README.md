@@ -12,7 +12,7 @@ For basic usage, just give the package path of interest as the first argument, f
 txcheck github.com/mcesar/txcheck
 ```
 ## Check
-Given the following program, `txcheck` warns that function main calls `Exec` but does no call `Begin` (or `BeginTx`).
+Given the following program, `txcheck` warns that function `main` calls `Exec` but does no call `Begin` (or `BeginTx`).
 ```go
 package main
 import (
