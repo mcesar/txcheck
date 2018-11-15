@@ -1,5 +1,5 @@
 # txcheck
-txcheck is a program for checking that you call Begin whenever you call DML functions in go programs.
+txcheck is a program for checking that you call Begin whenever you call DML functions in go programs. Supports `database/sql` and `github.com/gocraft/dbr`.
 
 ## Install
 ```
