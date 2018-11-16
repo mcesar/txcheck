@@ -22,7 +22,7 @@ import (
 var db *sql.DB
 func main() {
   // tx, _ := db.Begin()
-  tx.Exec("INSERT INTO t(c) values('v');")
+  db.Exec("INSERT INTO t(c) values('v');")
   // ...
 }
 ```
