@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/cha"
@@ -133,7 +134,8 @@ func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) er
 func (c *checker) warnings() []string {
 	var warnings []string
 	for function := range c.callersOfDML {
-		if !c.isBeginCalledBy(function, map[string]bool{}) {
+		if !c.isBeginCalledBy(function, map[string]bool{}) &&
+			!strings.Contains(function, "dbrx") {
 			warnings = append(warnings, fmt.Sprintf(warningMsg, function))
 		}
 	}
