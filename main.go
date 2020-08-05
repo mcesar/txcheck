@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -37,7 +38,12 @@ var (
 )
 
 func main() {
-	warnings, err := (&checker{}).run(os.Args[1:]...)
+	beginCallers := flag.String(
+		"begin-callers", "", "additional begin callers package names",
+	)
+	flag.Parse()
+	c := &checker{additionalBeginCallers: strings.Split(*beginCallers, ",")}
+	warnings, err := c.run(flag.Args()...)
 	if err != nil {
 		fmt.Fprintf(errout, errMsg, err)
 	}
@@ -47,9 +53,10 @@ func main() {
 }
 
 type checker struct {
-	callersOfDML   map[string]bool
-	callersOfBegin map[string]bool
-	callers        map[string][]string
+	additionalBeginCallers []string
+	callersOfDML           map[string]bool
+	callersOfBegin         map[string]bool
+	callers                map[string][]string
 }
 
 func (c *checker) run(args ...string) ([]string, error) {
@@ -93,7 +100,7 @@ func (c *checker) computeCallGraph(initial []*packages.Package) (cg *callgraph.G
 }
 
 func (c *checker) analyzeGraph(cg *callgraph.Graph, pkgs []*packages.Package) error {
-	var initialPackages []string
+	var initialPackages = c.additionalBeginCallers[:]
 	for _, pkg := range pkgs {
 		initialPackages = append(initialPackages, pkg.PkgPath)
 	}
