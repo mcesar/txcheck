@@ -50,6 +50,9 @@ func main() {
 	for _, w := range warnings {
 		fmt.Fprint(out, w)
 	}
+	if len(warnings) > 0 {
+		os.Exit(1)
+	}
 }
 
 type checker struct {
